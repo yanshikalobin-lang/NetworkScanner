@@ -1,29 +1,116 @@
 import socket
+import time
+import csv
+import ipaddress
+import threading
+from queue import Queue
 
-target = input("Enter IP address: ")
 
-ports = {
-    21: "FTP",
-    22: "SSH",
-    25: "SMTP",
-    53: "DNS",
-    80: "HTTP",
-    110: "POP3",
-    143: "IMAP",
-    443: "HTTPS"
-}
+# IP VALIDATION (SAFETY LAYER)
+def validate_ip(ip):
+    try:
+        ipaddress.ip_address(ip)
+        return True
+    except ValueError:
+        return False
 
-print(f"\nScanning {target}...\n")
 
-for port, service in ports.items():
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.settimeout(1)
+# PORT PARSING (flexible input)
+def parse_ports(port_input):
+    ports = set()
 
-    result = sock.connect_ex((target, port))
+    for part in port_input.split(","):
+        part = part.strip()
 
-    if result == 0:
-        print(f"Port {port} OPEN ({service})")
+        if "-" in part:
+            start, end = part.split("-")
+            ports.update(range(int(start), int(end) + 1))
+        else:
+            ports.add(int(part))
+
+    return sorted(ports)
+
+
+# PORT SCANNER FUNCTION
+def scan_port(ip, port, results):
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(0.5)
+
+        result = sock.connect_ex((ip, port))
+
+        if result == 0:
+            print(f"[+] Port {port} OPEN")
+            results.append({"port": port, "status": "open"})
+        else:
+            results.append({"port": port, "status": "closed"})
+
+        sock.close()
+
+    except Exception as e:
+        print(f"[!] Error scanning port {port}: {e}")
+
+#Multi-threading
+def worker(queue, ip, results):
+    while not queue.empty():
+        port = queue.get()
+        scan_port(ip,port, results)
+        queue.task_done()
+
+
+#main scanner logic
+def run_scan(ip, ports):
+    if not validate_ip(ip):
+        print("Invalid IP address")
+        return
     
-    sock.close()
+    results = []
+    queue = Queue()
 
-print("\nScan complete.")
+    for port in ports:
+        queue.put(port)
+
+    threads = []
+
+    for _ in range(50): #thread count
+        t = threading.Thread(target=worker, args= (queue, ip, results))
+        t.start()
+        threads.append(t)
+    queue.join()
+
+    return results
+
+#CSV Export
+def save_results(results, filename="scan_results.csv"):
+    with open(filename, "w", newline="") as file:
+        writer = csv.writer(file)
+
+        writer.writerow(["Port", "Status"])
+
+        for r in results:
+            writer.writerow([r["port"], r["status"]])
+
+    print(f"\n[+] Results saved to {filename}")
+
+#scan timer
+def timed_scan(ip, ports):
+    start = time.time()
+
+    results = run_scan(ip, ports)
+
+    end = time.time()
+
+    print(f"\nScan completed in {end - start:.2f} seconds")
+
+    return results
+
+#Add CLI test block
+if __name__ == "__main__":
+    target_ip = input("Enter target IP: ")
+    port_input = input("Enter ports (e.g. 22,80,100-200): ")
+
+    ports = parse_ports(port_input)
+
+    results = timed_scan(target_ip, ports)
+
+    save_results(results)
