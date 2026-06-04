@@ -1,2 +1,4 @@
-Port,Status
-25,closed
+Timestamp,Port,Status,Service,Risk
+2026-06-04 17:49:41,53,open,DNS,Low
+2026-06-04 17:49:41,443,open,HTTPS,Low
+2026-06-04 17:49:41,80,closed,HTTP,Low
